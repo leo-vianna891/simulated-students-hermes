@@ -1,0 +1,39 @@
+schema_version: 1
+upstream:
+  repository: https://github.com/umass-ml4ed/sim-student-eval.git
+  commit: 4c94a33e6053fd7acf812ff122deab16dcd3c126
+
+dataset:
+  id: Eedi/Question-Anchored-Tutoring-Dialogues-2k
+  revision: TO_BE_PINNED
+
+models:
+  - id: meta-llama/Llama-3.2-3B-Instruct
+    revision: TO_BE_PINNED
+  - id: meta-llama/Llama-3.1-8B-Instruct
+    revision: TO_BE_PINNED
+  - id: Qwen/Qwen3-4B-Instruct-2507
+    revision: TO_BE_PINNED
+
+upstream_declared_environment:
+  python: "3.11"
+  torch: "2.7.0"
+  transformers: "4.53.2"
+  datasets: "4.0.0"
+  peft: "0.16.0"
+  trl: "0.22.2"
+
+provisional_resolved_environment:
+  python: "3.11"
+  torch: "2.7.0"
+  transformers: "4.56.1"
+  datasets: "4.0.0"
+  peft: "0.16.0"
+  trl: "0.22.2"
+
+status: incomplete
+notes:
+  - Replace every TO_BE_PINNED value with an immutable revision before training.
+  - Record resolved transitive dependencies in uv.lock.
+  - The upstream requirements are internally inconsistent because trl 0.22.2 requires transformers >=4.55.0 while the file pins transformers 4.53.2.
+  - Transformers 4.56.1 is the provisional compatible resolution suggested by the upstream inline comment; validate behavior before freezing the final environment.
