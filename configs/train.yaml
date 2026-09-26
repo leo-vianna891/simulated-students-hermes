@@ -1,8 +1,4 @@
-schema_version: 1
-experiment:
-  name: paper-faithful-sft
-  treatment: student_only_lora
-  precision: bf16
+training:
   epochs: 3
   learning_rate: 5.0e-5
   weight_decay: 1.0e-2
@@ -10,10 +6,7 @@ experiment:
   scheduler: linear
   warmup_ratio: 0.1
   effective_batch_size: 64
-  evaluation_strategy: epoch
-  save_strategy: epoch
-  load_best_model_at_end: true
-  metric_for_best_model: eval_loss
+  precision: bf16
 
 lora:
   rank: 32
@@ -30,24 +23,21 @@ lora:
     - down_proj
 
 data:
-  maximum_formatted_prompt_characters: 6000
+  dataset: Eedi/Question-Anchored-Tutoring-Dialogues-2k
   split_seed: 221
-  train_fraction_of_original_train: 0.75
+  train_fraction: 0.75
+  maximum_prompt_characters: 6000
 
 models:
   llama_3_2_3b:
     id: meta-llama/Llama-3.2-3B-Instruct
-    per_device_train_batch_size: 2
+    train_batch_size: 2
     gradient_accumulation_steps: 32
-    per_device_eval_batch_size: 4
   llama_3_1_8b:
     id: meta-llama/Llama-3.1-8B-Instruct
-    per_device_train_batch_size: 1
+    train_batch_size: 1
     gradient_accumulation_steps: 64
-    per_device_eval_batch_size: 2
   qwen3_4b:
     id: Qwen/Qwen3-4B-Instruct-2507
-    per_device_train_batch_size: null
+    train_batch_size: null
     gradient_accumulation_steps: null
-    per_device_eval_batch_size: null
-    note: Select values through a documented memory pilot while preserving effective batch size 64.

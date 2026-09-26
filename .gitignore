@@ -1,39 +1,33 @@
 # Python
 __pycache__/
 *.py[cod]
+.venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
-htmlcov/
-.venv/
 
-# Secrets and local configuration
-.env
-.env.*
-!.env.example
+# Local configuration and secrets
+.env*
 *.pem
 *.key
 
-# IDE and OS
+# Editors and operating systems
 .vscode/
 .idea/
 .DS_Store
 
-# Experiment tracking and caches
-wandb/
-mlruns/
-.cache/
-
-# Large or generated research artifacts
+# Datasets, models, caches, and generated runs
 artifacts/
 data/
 models/
 checkpoints/
+outputs/
 logs/
-results/raw/
+wandb/
+.cache/
 
-# ML binary and tabular artifacts
+# ML binaries
 *.safetensors
 *.bin
 *.pt
@@ -44,7 +38,7 @@ results/raw/
 *.arrow
 *.parquet
 
-# Generated package artifacts
+# Packages
 build/
 dist/
 *.egg-info/
