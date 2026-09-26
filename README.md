@@ -17,6 +17,7 @@ Infrastructure bootstrap. Training code and experimental results do not exist ye
 ```bash
 uv sync --locked
 uv run sim-student doctor
+uv run sim-student audit-dataset artifacts/datasets/raw/<revision> --revision <revision>
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
@@ -45,6 +46,8 @@ results/summary/         Small, reviewed aggregate outputs suitable for Git
 ```
 
 Runtime artifacts are deliberately external to Git. See [`ARTIFACTS.md`](ARTIFACTS.md).
+The dataset audit writes aggregate, privacy-safe evidence to
+`results/summary/dataset-audit.json`; source dialogue text remains under the ignored artifact root.
 
 ## Upstream reference
 

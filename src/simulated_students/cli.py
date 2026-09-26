@@ -12,6 +12,7 @@ import typer
 
 from simulated_students.artifacts import RunLayout, artifact_root, git_commit, project_root
 from simulated_students.config import load_yaml
+from simulated_students.dataset import write_audit_report
 
 app = typer.Typer(no_args_is_help=True, help="Simulated-students research utilities.")
 
@@ -49,3 +50,27 @@ def init_run(
     layout = RunLayout.create(run_id)
     receipt = layout.write_receipt(config)
     typer.echo(json.dumps(receipt, indent=2, sort_keys=True))
+
+
+@app.command("audit-dataset")
+def audit_dataset_command(
+    root: Annotated[Path, typer.Argument(exists=True, file_okay=False)],
+    revision: Annotated[str, typer.Option(help="Immutable Hugging Face dataset revision")],
+    output: Annotated[
+        Path,
+        typer.Option(help="Aggregate JSON report path"),
+    ] = Path("results/summary/dataset-audit.json"),
+) -> None:
+    """Audit the pinned Eedi CSV snapshot without exposing dialogue contents."""
+    report = write_audit_report(root, revision, output)
+    typer.echo(
+        json.dumps(
+            {
+                "output": str(output.resolve()),
+                "train_dialogues": report["splits"]["train"]["unique_dialogues"],
+                "test_dialogues": report["splits"]["test"]["unique_dialogues"],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
