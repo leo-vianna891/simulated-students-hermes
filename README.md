@@ -13,9 +13,10 @@ The immediate goal is straightforward: load the Eedi tutoring dialogues, format 
 ## Current state
 
 - deterministic Eedi dialogue loader and train/validation split;
+- native Llama 3.2 chat formatting with assistant-only loss labels;
 - paper-faithful training configuration;
 - minimal local quality tooling;
-- training pipeline not implemented yet.
+- training command not implemented yet.
 
 ## Setup
 
@@ -38,7 +39,7 @@ uv sync --extra train
 
 ```text
 configs/train.yaml          Planned paper-faithful training settings
-src/simulated_students/     Dataset loader and minimal CLI
+src/simulated_students/     Dataset, Llama formatting, and minimal CLI
 tests/                      Essential behavior tests
 ```
 
