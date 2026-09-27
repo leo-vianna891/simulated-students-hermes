@@ -15,8 +15,9 @@ The immediate goal is straightforward: load the Eedi tutoring dialogues, format 
 - deterministic Eedi dialogue loader and train/validation split;
 - native Llama 3.2 chat formatting with assistant-only loss labels;
 - paper-faithful training configuration;
+- minimal Transformers/PEFT LoRA training command;
+- completed tiny-Llama end-to-end training, adapter reload, and generation smoke test;
 - minimal local quality tooling;
-- training command not implemented yet.
 
 ## Setup
 
@@ -35,11 +36,19 @@ Install the ML dependencies only when working on training:
 uv sync --extra train
 ```
 
+Training requires approved Hugging Face access to the official Meta model. On a suitable GPU, run:
+
+```bash
+uv run sim-student train \
+  artifacts/datasets/raw/6d4eb56961aa098a901a1043aa98013dba7cf1ed \
+  --output-dir outputs/llama-3.2-3b
+```
+
 ## Layout
 
 ```text
-configs/train.yaml          Planned paper-faithful training settings
-src/simulated_students/     Dataset, Llama formatting, and minimal CLI
+configs/train.yaml          Paper-faithful training settings
+src/simulated_students/     Dataset, formatting, training, and minimal CLI
 tests/                      Essential behavior tests
 ```
 

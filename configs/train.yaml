@@ -1,4 +1,5 @@
 training:
+  seed: 42
   epochs: 3
   learning_rate: 5.0e-5
   weight_decay: 1.0e-2
@@ -32,6 +33,7 @@ models:
   llama_3_2_3b:
     id: meta-llama/Llama-3.2-3B-Instruct
     train_batch_size: 2
+    validation_batch_size: 4
     gradient_accumulation_steps: 32
   llama_3_1_8b:
     id: meta-llama/Llama-3.1-8B-Instruct
