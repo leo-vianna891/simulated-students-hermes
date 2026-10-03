@@ -1,4 +1,4 @@
-"""Format Eedi dialogues for Llama student-simulator SFT."""
+"""Format Eedi dialogues with native student-simulator chat templates."""
 
 from __future__ import annotations
 
@@ -87,11 +87,12 @@ def _tokenize(
     return encoded
 
 
-def format_llama_student_dialogue(
+def format_student_dialogue(
     dialogue: Dialogue,
     tokenizer: ChatTemplateTokenizer,
     *,
     maximum_characters: int = 6_000,
+    end_of_turn_id: int | None = None,
 ) -> SFTExample | None:
     """Apply the native template and supervise only student/assistant outputs.
 
@@ -124,6 +125,12 @@ def format_llama_student_dialogue(
             raise ValueError("Chat template tokenization is not prefix-stable")
         if start >= end:
             raise ValueError("Assistant message produced no supervised tokens")
+        if end_of_turn_id is not None:
+            # Qwen adds a separator after EOS; supervise through EOS, not beyond it.
+            endings = [i for i in range(start, end) if input_ids[i] == end_of_turn_id]
+            if not endings:
+                raise ValueError("Assistant message has no native end-of-turn token")
+            end = endings[-1] + 1
         labels[start:end] = input_ids[start:end]
 
     if all(label == -100 for label in labels):

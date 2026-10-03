@@ -21,10 +21,15 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("doctor", help="inspect the local environment")
 
-    train = commands.add_parser("train", help="train the Llama 3.2 student adapter")
+    train = commands.add_parser("train", help="train a student adapter")
     train.add_argument("dataset_root", type=Path)
     train.add_argument("--output-dir", type=Path, required=True)
     train.add_argument("--config", type=Path, default=Path("configs/train.yaml"))
+    train.add_argument(
+        "--model",
+        choices=("llama_3_2_3b", "llama_3_1_8b", "qwen3_4b"),
+        default="llama_3_2_3b",
+    )
     train.add_argument("--model-id")
     train.add_argument("--model-revision")
     train.add_argument("--max-steps", type=int)
@@ -36,12 +41,13 @@ def main() -> None:
         doctor()
         return
     if args.command == "train":
-        from simulated_students.training import train_llama
+        from simulated_students.training import train_student
 
-        train_llama(
+        train_student(
             args.dataset_root,
             args.output_dir,
             config_path=args.config,
+            model_key=args.model,
             model_id_override=args.model_id,
             model_revision=args.model_revision,
             max_steps=args.max_steps,

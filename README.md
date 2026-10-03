@@ -13,10 +13,10 @@ The immediate goal is straightforward: load the Eedi tutoring dialogues, format 
 ## Current state
 
 - deterministic Eedi dialogue loader and train/validation split;
-- native Llama 3.2 chat formatting with assistant-only loss labels;
+- native Llama and Qwen chat templates with student-only loss labels through the native end-of-turn token;
 - paper-faithful training configuration;
 - minimal Transformers/PEFT LoRA training command;
-- completed tiny-Llama end-to-end training, adapter reload, and generation smoke test;
+- completed tiny-Llama and tiny-Qwen3 end-to-end training, adapter reload, and generation smoke tests;
 - minimal local quality tooling;
 
 ## Setup
@@ -43,6 +43,12 @@ uv run sim-student train \
   artifacts/datasets/raw/6d4eb56961aa098a901a1043aa98013dba7cf1ed \
   --output-dir outputs/llama-3.2-3b
 ```
+
+Select a configuration with `--model llama_3_2_3b` (default), `--model llama_3_1_8b`, or `--model qwen3_4b`. All three use the same direct Transformers/PEFT command; only the native tokenizer/template and configured batch sizes differ. Llama uses its fine-tuning pad token; Qwen keeps its native pad token. Qwen's separator after the end-of-turn token is masked.
+
+Before Qwen training, set `train_batch_size` and `gradient_accumulation_steps` in a configuration copy; their product must equal `effective_batch_size`. The production values remain unset until a hardware smoke establishes memory use. `--model-id`, `--model-revision`, and the step/sample limits support bounded tiny-model smoke tests without changing the final model selection.
+
+Official Meta models require approved Hugging Face access and a valid credential. The Llama 3.1 mirror validation is provisional; the official tokenizer must still be checked after renewing authentication. No full-size model has been trained yet.
 
 ## Layout
 

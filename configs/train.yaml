@@ -37,9 +37,11 @@ models:
     gradient_accumulation_steps: 32
   llama_3_1_8b:
     id: meta-llama/Llama-3.1-8B-Instruct
+    validation_batch_size: 4
     train_batch_size: 1
     gradient_accumulation_steps: 64
   qwen3_4b:
     id: Qwen/Qwen3-4B-Instruct-2507
+    validation_batch_size: 4
     train_batch_size: null
     gradient_accumulation_steps: null

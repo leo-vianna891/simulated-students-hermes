@@ -1,4 +1,4 @@
-"""Minimal Llama 3.2 LoRA training path."""
+"""Minimal native-template LoRA training path."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from transformers import (
 from simulated_students.dataset import Dialogue, load_eedi_splits
 from simulated_students.formatting import (
     ChatTemplateTokenizer,
-    format_llama_student_dialogue,
+    format_student_dialogue,
 )
 
 
@@ -80,10 +80,11 @@ def _format_dialogues(
     chat_tokenizer = cast(ChatTemplateTokenizer, tokenizer)
     examples: list[ModelInput] = []
     for dialogue in dialogues:
-        formatted = format_llama_student_dialogue(
+        formatted = format_student_dialogue(
             dialogue,
             chat_tokenizer,
             maximum_characters=maximum_characters,
+            end_of_turn_id=tokenizer.eos_token_id,
         )
         if formatted is None:
             continue
@@ -99,23 +100,31 @@ def _format_dialogues(
     return TokenizedDialogues(examples)
 
 
-def train_llama(
+def train_student(
     dataset_root: Path,
     output_dir: Path,
     *,
     config_path: Path = Path("configs/train.yaml"),
+    model_key: str = "llama_3_2_3b",
     model_id_override: str | None = None,
     model_revision: str | None = None,
     max_steps: int | None = None,
     max_train_samples: int | None = None,
     max_validation_samples: int | None = None,
 ) -> None:
-    """Train the Llama 3.2 student adapter using the project configuration."""
+    """Train the selected student adapter using the project configuration."""
     config = _load_config(config_path)
     training = config["training"]
     lora = config["lora"]
     data = config["data"]
-    model_config = config["models"]["llama_3_2_3b"]
+    model_config = config["models"][model_key]
+    for field in ("train_batch_size", "validation_batch_size", "gradient_accumulation_steps"):
+        if model_config.get(field) is None:
+            raise ValueError(f"Set models.{model_key}.{field} in {config_path} before training")
+    if int(model_config["train_batch_size"]) * int(
+        model_config["gradient_accumulation_steps"]
+    ) != int(training["effective_batch_size"]):
+        raise ValueError("Microbatch times gradient accumulation must match effective_batch_size")
     model_id = model_id_override or model_config["id"]
     seed = int(training["seed"])
     set_seed(seed)
@@ -124,9 +133,12 @@ def train_llama(
         model_id,
         revision=model_revision,
     )
-    tokenizer.pad_token = "<|finetune_right_pad_id|>"
-    if tokenizer.pad_token_id is None:
-        raise ValueError(f"Tokenizer for {model_id} has no Llama fine-tuning pad token")
+    if model_key.startswith("llama_"):
+        if "<|finetune_right_pad_id|>" not in tokenizer.get_vocab():
+            raise ValueError(f"Tokenizer for {model_id} has no Llama fine-tuning pad token")
+        tokenizer.pad_token = "<|finetune_right_pad_id|>"
+    if tokenizer.pad_token_id is None or tokenizer.eos_token_id is None:
+        raise ValueError(f"Tokenizer for {model_id} needs native padding and end-of-turn tokens")
 
     splits = load_eedi_splits(
         dataset_root,
@@ -155,7 +167,8 @@ def train_llama(
         pad_token_id=tokenizer.pad_token_id,
     )
     model.config.use_cache = False
-    model.config.pretraining_tp = 1
+    if model_key.startswith("llama_"):
+        model.config.pretraining_tp = 1
     peft_model = get_peft_model(
         model,
         LoraConfig(
