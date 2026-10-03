@@ -93,16 +93,23 @@ def format_student_dialogue(
     *,
     maximum_characters: int = 6_000,
     end_of_turn_id: int | None = None,
+    filter_tokenizer: ChatTemplateTokenizer | None = None,
 ) -> SFTExample | None:
     """Apply the native template and supervise only student/assistant outputs.
 
     Assistant spans are inferred by rendering prefixes with the tokenizer's own
     generation prompt. This preserves the native template without relying on
-    Llama-specific header token IDs.
+    Llama-specific header token IDs. An optional reference tokenizer determines
+    dialogue inclusion without changing or truncating the native representation.
     """
     messages = _student_messages(dialogue)
     text = _render(tokenizer, messages)
-    if len(text) >= maximum_characters:
+    selection_text = (
+        text
+        if filter_tokenizer is None or filter_tokenizer is tokenizer
+        else _render(filter_tokenizer, messages)
+    )
+    if len(selection_text) >= maximum_characters:
         return None
 
     input_ids = _tokenize(tokenizer, messages)

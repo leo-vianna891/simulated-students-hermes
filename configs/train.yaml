@@ -28,6 +28,8 @@ data:
   split_seed: 221
   train_fraction: 0.75
   maximum_prompt_characters: 6000
+  filter_tokenizer_id: meta-llama/Llama-3.2-3B-Instruct
+  filter_tokenizer_revision: 0cb88a4f764b7a12671c53f0838cd831a0843b95
 
 models:
   llama_3_2_3b:

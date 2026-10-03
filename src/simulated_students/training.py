@@ -76,6 +76,7 @@ def _format_dialogues(
     dialogues: list[Dialogue],
     tokenizer: PreTrainedTokenizerBase,
     maximum_characters: int,
+    filter_tokenizer: ChatTemplateTokenizer | None = None,
 ) -> TokenizedDialogues:
     chat_tokenizer = cast(ChatTemplateTokenizer, tokenizer)
     examples: list[ModelInput] = []
@@ -85,6 +86,7 @@ def _format_dialogues(
             chat_tokenizer,
             maximum_characters=maximum_characters,
             end_of_turn_id=tokenizer.eos_token_id,
+            filter_tokenizer=filter_tokenizer,
         )
         if formatted is None:
             continue
@@ -140,6 +142,12 @@ def train_student(
     if tokenizer.pad_token_id is None or tokenizer.eos_token_id is None:
         raise ValueError(f"Tokenizer for {model_id} needs native padding and end-of-turn tokens")
 
+    filter_tokenizer = AutoTokenizer.from_pretrained(  # type: ignore[no-untyped-call]
+        data["filter_tokenizer_id"],
+        revision=data["filter_tokenizer_revision"],
+    )
+    selection_tokenizer = cast(ChatTemplateTokenizer, filter_tokenizer)
+
     splits = load_eedi_splits(
         dataset_root,
         seed=int(data["split_seed"]),
@@ -151,11 +159,13 @@ def train_student(
         train_dialogues,
         tokenizer,
         int(data["maximum_prompt_characters"]),
+        selection_tokenizer,
     )
     validation_dataset = _format_dialogues(
         validation_dialogues,
         tokenizer,
         int(data["maximum_prompt_characters"]),
+        selection_tokenizer,
     )
 
     has_cuda = torch.cuda.is_available()

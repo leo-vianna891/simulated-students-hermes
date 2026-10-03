@@ -90,3 +90,32 @@ def test_mask_excludes_separator_after_end_of_turn() -> None:
     )
     assert supervised == "4<end_of_dialogue><eot>"
     assert example["labels"][-1] == -100
+
+
+def test_selection_uses_reference_template_without_truncating_native_content() -> None:
+    dialogue: Dialogue = {
+        "key": (1, 100),
+        "question": "2 + 2?",
+        "subjects": [],
+        "turns": [{"role": "student", "content": "4"}],
+    }
+    native = CharacterTokenizer()
+    reference = NewlineTokenizer()
+    native_example = format_student_dialogue(dialogue, native)
+    reference_example = format_student_dialogue(dialogue, reference)
+    assert native_example is not None and reference_example is not None
+    cutoff = len(reference_example["text"])
+    assert len(native_example["text"]) < cutoff
+    assert format_student_dialogue(dialogue, native, maximum_characters=cutoff) is not None
+    assert (
+        format_student_dialogue(
+            dialogue, native, maximum_characters=cutoff, filter_tokenizer=reference
+        )
+        is None
+    )
+
+    # Selection is solely reference-based: a longer native representation is kept intact.
+    selected = format_student_dialogue(
+        dialogue, reference, maximum_characters=cutoff, filter_tokenizer=native
+    )
+    assert selected == reference_example

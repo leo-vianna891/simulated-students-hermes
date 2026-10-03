@@ -46,6 +46,8 @@ uv run sim-student train \
 
 Select a configuration with `--model llama_3_2_3b` (default), `--model llama_3_1_8b`, or `--model qwen3_4b`. All three use the same direct Transformers/PEFT command; only the native tokenizer/template and configured batch sizes differ. Llama uses its fine-tuning pad token; Qwen keeps its native pad token. Qwen's separator after the end-of-turn token is masked.
 
+Selection is shared across models: the pinned Llama 3.2 tokenizer in `data.filter_tokenizer_id` / `filter_tokenizer_revision` applies the `< 6,000` rendered-character cutoff. Each retained dialogue is then formatted with the selected model's native template, without truncation. All three use the same 1,161 training, 388 validation, and 390 test dialogue keys; Qwen does not receive additional dialogues merely because its template is shorter.
+
 Before Qwen training, set `train_batch_size` and `gradient_accumulation_steps` in a configuration copy; their product must equal `effective_batch_size`. The production values remain unset until a hardware smoke establishes memory use. `--model-id`, `--model-revision`, and the step/sample limits support bounded tiny-model smoke tests without changing the final model selection.
 
 Official Meta models require approved Hugging Face access and a valid credential. The official Llama 3.1 tokenizer has been validated on all 1,971 dialogues and produces identical formatted examples and masks to the previously tested mirror. No full-size model has been trained yet.
