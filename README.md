@@ -48,7 +48,7 @@ Select a configuration with `--model llama_3_2_3b` (default), `--model llama_3_1
 
 Before Qwen training, set `train_batch_size` and `gradient_accumulation_steps` in a configuration copy; their product must equal `effective_batch_size`. The production values remain unset until a hardware smoke establishes memory use. `--model-id`, `--model-revision`, and the step/sample limits support bounded tiny-model smoke tests without changing the final model selection.
 
-Official Meta models require approved Hugging Face access and a valid credential. The Llama 3.1 mirror validation is provisional; the official tokenizer must still be checked after renewing authentication. No full-size model has been trained yet.
+Official Meta models require approved Hugging Face access and a valid credential. The official Llama 3.1 tokenizer has been validated on all 1,971 dialogues and produces identical formatted examples and masks to the previously tested mirror. No full-size model has been trained yet.
 
 ## Layout
 
