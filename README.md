@@ -52,6 +52,36 @@ Before Qwen training, set `train_batch_size` and `gradient_accumulation_steps` i
 
 Official Meta models require approved Hugging Face access and a valid credential. The official Llama 3.1 tokenizer has been validated on all 1,971 dialogues and produces identical formatted examples and masks to the previously tested mirror. No full-size model has been trained yet.
 
+## Remote GPU smoke
+
+`scripts/runpod_bootstrap.sh` creates a separate Python 3.11.15 environment from
+`uv.lock`, without using the image's preinstalled PyTorch. Provide uv 0.11.32 at
+`/workspace/tools/uv`, or set `UV_BIN`. Caches and managed Python stay under
+`/workspace`; the script creates no cloud infrastructure.
+
+After transferring the pinned dataset and configuring Hugging Face access:
+
+```bash
+bash scripts/runpod_bootstrap.sh
+HF_HOME=/workspace/hf-cache /workspace/tools/uv run --locked --extra train python \
+  scripts/runpod_smoke.py \
+  artifacts/datasets/raw/6d4eb56961aa098a901a1043aa98013dba7cf1ed \
+  --model llama_3_2_3b --output-dir outputs/smoke-llama-3.2
+```
+
+The smoke pins model revisions and requires exactly one native-BF16 CUDA GPU.
+It runs one optimizer step with warmup disabled, saves/reloads the adapter,
+exercises the longest training and validation batches, and generates up to eight
+tokens. Qwen's provisional `1 × 64` batch applies only to the smoke; the production
+configuration is unchanged. The test split is not used. This is neither final
+training nor Hermes evaluation. Local tiny-model checks do not establish that
+full-size models fit a 48 GB GPU.
+
+Keep data and environments under `/workspace`. Download and verify adapters
+before terminating a Pod: its local volume survives stop, but not terminate.
+Stopped Pods still incur storage charges. A process timeout does not stop GPU
+billing; stopping or terminating the Pod is a separate operation.
+
 ## Layout
 
 ```text
