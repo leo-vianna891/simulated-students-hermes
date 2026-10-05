@@ -32,6 +32,7 @@ def main() -> None:
     )
     train.add_argument("--model-id")
     train.add_argument("--model-revision")
+    train.add_argument("--resume-from-checkpoint", type=Path)
     train.add_argument("--max-steps", type=int)
     train.add_argument("--max-train-samples", type=int)
     train.add_argument("--max-validation-samples", type=int)
@@ -50,6 +51,7 @@ def main() -> None:
             model_key=args.model,
             model_id_override=args.model_id,
             model_revision=args.model_revision,
+            resume_from_checkpoint=args.resume_from_checkpoint,
             max_steps=args.max_steps,
             max_train_samples=args.max_train_samples,
             max_validation_samples=args.max_validation_samples,

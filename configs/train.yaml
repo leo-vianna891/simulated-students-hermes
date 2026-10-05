@@ -8,6 +8,7 @@ training:
   warmup_ratio: 0.1
   effective_batch_size: 64
   precision: bf16
+  checkpoint_steps: 5
 
 lora:
   rank: 32

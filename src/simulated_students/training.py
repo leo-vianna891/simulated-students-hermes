@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import platform
 from dataclasses import dataclass
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
@@ -17,10 +19,17 @@ from transformers import (
     AutoTokenizer,
     PreTrainedTokenizerBase,
     Trainer,
+    TrainerCallback,
     TrainingArguments,
     set_seed,
 )
 
+from simulated_students.checkpoints import (
+    file_sha256,
+    json_sha256,
+    seal_checkpoint,
+    validate_resume,
+)
 from simulated_students.dataset import Dialogue, load_eedi_splits
 from simulated_students.formatting import (
     ChatTemplateTokenizer,
@@ -103,6 +112,28 @@ def _format_dialogues(
     return TokenizedDialogues(examples)
 
 
+class RecoveryCallback(TrainerCallback):
+    """Save between epochs too; native epoch evaluation/best-selection is unchanged."""
+
+    def __init__(self, identity: dict[str, Any], interval: int) -> None:
+        self.identity = identity
+        self.interval = interval
+
+    def on_step_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
+        # Epoch-end saving follows evaluation; do not overwrite the same step twice.
+        if state.global_step % self.interval == 0 and not float(state.epoch).is_integer():
+            control.should_save = True
+
+    def on_save(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
+        seal_checkpoint(Path(args.output_dir) / f"checkpoint-{state.global_step}", self.identity)
+
+    def on_train_begin(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
+        if state.best_model_checkpoint:
+            state.best_model_checkpoint = str(
+                Path(args.output_dir) / Path(state.best_model_checkpoint).name
+            )
+
+
 def train_student(
     dataset_root: Path,
     output_dir: Path,
@@ -114,6 +145,7 @@ def train_student(
     max_steps: int | None = None,
     max_train_samples: int | None = None,
     max_validation_samples: int | None = None,
+    resume_from_checkpoint: Path | None = None,
 ) -> None:
     """Train the selected student adapter using the project configuration."""
     config = _load_config(config_path)
@@ -130,7 +162,16 @@ def train_student(
         raise ValueError("Microbatch times gradient accumulation must match effective_batch_size")
     model_id = model_id_override or model_config["id"]
     model_revision = model_revision or (None if model_id_override else model_config["revision"])
-    if output_dir.exists() and any(output_dir.iterdir()):
+    if resume_from_checkpoint is not None:
+        state = validate_resume(resume_from_checkpoint, output_dir)
+        completed = (
+            int(state["global_step"]) >= max_steps
+            if max_steps is not None and max_steps > 0
+            else float(state["epoch"]) >= float(training["epochs"])
+        )
+        if completed:
+            raise ValueError("Checkpoint already reached the requested training horizon")
+    elif output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Choose a fresh output directory: {output_dir}")
     if torch.cuda.device_count() > 1 or int(os.environ.get("WORLD_SIZE", "1")) != 1:
         raise RuntimeError("Use one process and one visible GPU for the configured effective batch")
@@ -175,6 +216,34 @@ def train_student(
     )
 
     has_cuda = torch.cuda.is_available()
+    interval = int(training["checkpoint_steps"])
+    if interval < 1:
+        raise ValueError("checkpoint_steps must be positive")
+    source_dir = Path(__file__).parent
+    project_root = source_dir.parent.parent
+    identity = {
+        "config": config,
+        "model_key": model_key,
+        "model_id": model_id,
+        "model_revision": model_revision,
+        "limits": [max_steps, max_train_samples, max_validation_samples],
+        "train_sha256": json_sha256(train_dataset.examples),
+        "validation_sha256": json_sha256(validation_dataset.examples),
+        "source_sha256": {
+            name: file_sha256(source_dir / name)
+            for name in ("training.py", "checkpoints.py", "dataset.py", "formatting.py")
+        },
+        "lock_sha256": file_sha256(project_root / "uv.lock"),
+        "runtime": {
+            "python": platform.python_version(),
+            "packages": {
+                name: version(name) for name in ("torch", "transformers", "peft", "accelerate")
+            },
+            "device": torch.cuda.get_device_name(0) if has_cuda else "cpu",
+        },
+    }
+    if resume_from_checkpoint is not None:
+        validate_resume(resume_from_checkpoint, output_dir, identity)
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         revision=model_revision,
@@ -215,8 +284,12 @@ def train_student(
         eval_accumulation_steps=4,
         eval_strategy="epoch",
         save_strategy="epoch",
-        save_total_limit=1,
-        save_only_model=True,
+        # Keep a previous recovery point while the next native save is being sealed.
+        save_total_limit=3,
+        save_only_model=False,
+        logging_steps=1,
+        disable_tqdm=True,
+        ignore_data_skip=False,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
@@ -235,7 +308,10 @@ def train_student(
         eval_dataset=validation_dataset,
         data_collator=SFTCollator(tokenizer.pad_token_id),
         processing_class=tokenizer,
+        callbacks=[RecoveryCallback(identity, interval)],
     )
-    trainer.train()
+    trainer.train(
+        resume_from_checkpoint=str(resume_from_checkpoint) if resume_from_checkpoint else None
+    )
     trainer.save_model()
     trainer.save_state()
