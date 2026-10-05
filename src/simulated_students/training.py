@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict, cast
@@ -128,6 +129,15 @@ def train_student(
     ) != int(training["effective_batch_size"]):
         raise ValueError("Microbatch times gradient accumulation must match effective_batch_size")
     model_id = model_id_override or model_config["id"]
+    model_revision = model_revision or (None if model_id_override else model_config["revision"])
+    if output_dir.exists() and any(output_dir.iterdir()):
+        raise FileExistsError(f"Choose a fresh output directory: {output_dir}")
+    if torch.cuda.device_count() > 1 or int(os.environ.get("WORLD_SIZE", "1")) != 1:
+        raise RuntimeError("Use one process and one visible GPU for the configured effective batch")
+    if not model_id_override and (
+        not torch.cuda.is_available() or not torch.cuda.is_bf16_supported(including_emulation=False)
+    ):
+        raise RuntimeError("Official-model training requires a native-BF16 CUDA GPU")
     seed = int(training["seed"])
     set_seed(seed)
 
@@ -148,11 +158,7 @@ def train_student(
     )
     selection_tokenizer = cast(ChatTemplateTokenizer, filter_tokenizer)
 
-    splits = load_eedi_splits(
-        dataset_root,
-        seed=int(data["split_seed"]),
-        train_fraction=float(data["train_fraction"]),
-    )
+    splits = load_eedi_splits(dataset_root)
     train_dialogues = splits.train[:max_train_samples]
     validation_dialogues = splits.validation[:max_validation_samples]
     train_dataset = _format_dialogues(
@@ -184,6 +190,7 @@ def train_student(
         LoraConfig(
             task_type="CAUSAL_LM",
             inference_mode=False,
+            revision=model_revision,
             r=int(lora["rank"]),
             lora_alpha=int(lora["alpha"]),
             lora_dropout=float(lora["dropout"]),
@@ -231,3 +238,4 @@ def train_student(
     )
     trainer.train()
     trainer.save_model()
+    trainer.save_state()

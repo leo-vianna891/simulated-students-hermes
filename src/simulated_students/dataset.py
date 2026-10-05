@@ -1,19 +1,15 @@
-"""Load the Eedi tutoring dialogues used by the training pipeline."""
+"""Load the reference paper's published annotated Eedi splits."""
 
 from __future__ import annotations
 
+import ast
 import csv
-import random
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict, cast
 
 DialogueKey = tuple[int, int]
 Role = Literal["student", "tutor"]
-
-# These are the missing-value forms present in the pinned CSV snapshot.
-_PANDAS_NA = {"", "None"}
 
 
 class Turn(TypedDict):
@@ -21,11 +17,22 @@ class Turn(TypedDict):
     content: str
 
 
+class QuestionAnnotation(TypedDict):
+    solvable: bool
+    correct_option: int
+    solution: str
+    option_1_explanation: str
+    option_2_explanation: str
+    option_3_explanation: str
+    option_4_explanation: str
+
+
 class Dialogue(TypedDict):
     key: DialogueKey
     question: str
     subjects: list[tuple[str, int]]
     turns: list[Turn]
+    question_annotation: NotRequired[QuestionAnnotation]
 
 
 @dataclass(frozen=True)
@@ -35,99 +42,81 @@ class DatasetSplits:
     test: list[Dialogue]
 
 
-def _read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8-sig") as stream:
-        rows: list[dict[str, str]] = []
-        for raw_row in csv.DictReader(stream):
-            row: dict[str, str] = {}
-            for key, value in raw_row.items():
-                if key is None or value is None:
-                    raise ValueError(f"Malformed CSV row in {path}")
-                row[key] = value
-            rows.append(row)
-    return rows
+def _literal(text: str) -> object:
+    try:
+        return ast.literal_eval(text)
+    except (ValueError, SyntaxError):
+        return None
 
 
-def _load_metadata(root: Path) -> dict[DialogueKey, tuple[str, list[tuple[str, int]]]]:
-    question_parts: dict[DialogueKey, list[str]] = defaultdict(list)
-    for row in _read_csv(root / "dq-question-metadata.csv"):
-        key = (int(row["QuestionId_DQ"]), int(row["InterventionId"]))
-        text = row["Text"].replace("\n", " ").strip()
-        question_parts[key].append(f"{row['Label']}: {text}")
-
-    subjects: dict[int, list[tuple[str, int]]] = defaultdict(list)
-    for row in _read_csv(root / "dialogue-subjects.csv"):
-        subjects[int(row["InterventionId"])].append((row["SubjectName"], int(row["SubjectLevel"])))
-
-    return {key: ("\n".join(parts), subjects[key[1]]) for key, parts in question_parts.items()}
-
-
-def _message_text(raw: str) -> str:
-    return "nan" if raw in _PANDAS_NA else raw.replace("\n", " ").strip()
-
-
-def _load_dialogues(
-    path: Path,
-    metadata: dict[DialogueKey, tuple[str, list[tuple[str, int]]]],
-) -> list[Dialogue]:
-    grouped: dict[DialogueKey, list[dict[str, str]]] = defaultdict(list)
-    for row in _read_csv(path):
-        key = (int(row["QuestionId_DQ"]), int(row["InterventionId"]))
-        grouped[key].append(row)
-
+def _load_annotated(path: Path) -> list[Dialogue]:
     dialogues: list[Dialogue] = []
-    for key in sorted(grouped):
-        if key not in metadata:
-            raise ValueError(f"Missing question metadata for dialogue {key}")
-
-        rows = grouped[key]
-        sequences = [int(row["MessageSequence"]) for row in rows]
-        if sequences != list(range(sequences[0], sequences[-1] + 1)):
-            raise ValueError(f"Invalid message sequence for dialogue {key}")
-
-        turns: list[Turn] = []
-        for row in rows:
-            if row["IsTutor"] not in {"0", "1"}:
-                raise ValueError(f"Invalid speaker value for dialogue {key}")
-            role: Role = "tutor" if row["IsTutor"] == "1" else "student"
-            text = _message_text(row["MessageString"])
-            if not turns or turns[-1]["role"] != role:
-                turns.append({"role": role, "content": text})
+    with path.open(newline="", encoding="utf-8-sig") as stream:
+        for row in csv.DictReader(stream):
+            annotation = _literal(row["question_annotation"])
+            # Match upstream load_annotated_data(..., drop_unsolvable=True).
+            if not isinstance(annotation, dict) or not annotation.get("solvable"):
                 continue
-            if not turns[-1]["content"].endswith((".", "!", "?")):
-                turns[-1]["content"] += "."
-            turns[-1]["content"] += f" {text}"
-
-        question, dialogue_subjects = metadata[key]
-        dialogues.append(
-            {
-                "key": key,
-                "question": question,
-                "subjects": dialogue_subjects,
-                "turns": turns,
-            }
-        )
+            key = _literal(row["key"])
+            turns = _literal(row["turns"])
+            subjects = _literal(row["subjects"])
+            if not isinstance(key, tuple) or len(key) != 2 or not all(type(k) is int for k in key):
+                raise ValueError(f"Invalid dialogue key in {path}")
+            if (
+                not isinstance(turns, list)
+                or not turns
+                or not all(
+                    isinstance(t, dict)
+                    and t.get("role") in {"student", "tutor"}
+                    and isinstance(t.get("content"), str)
+                    for t in turns
+                )
+            ):
+                raise ValueError(f"Invalid dialogue turns in {path}")
+            if not isinstance(subjects, list):
+                raise ValueError(f"Invalid subjects in {path}")
+            if (
+                type(annotation.get("correct_option")) is not int
+                or not 1 <= annotation["correct_option"] <= 4
+            ):
+                raise ValueError(f"Invalid correct option in {path}")
+            if not all(
+                isinstance(annotation.get(k), str)
+                for k in (
+                    "solution",
+                    "option_1_explanation",
+                    "option_2_explanation",
+                    "option_3_explanation",
+                    "option_4_explanation",
+                )
+            ):
+                raise ValueError(f"Incomplete question annotation in {path}")
+            dialogues.append(
+                {
+                    "key": cast(DialogueKey, key),
+                    "question": row["question"],
+                    "subjects": cast(list[tuple[str, int]], subjects),
+                    "turns": cast(list[Turn], turns),
+                    "question_annotation": cast(QuestionAnnotation, annotation),
+                }
+            )
+    if not dialogues:
+        raise ValueError(f"No solvable annotated dialogues in {path}")
+    if len({d["key"] for d in dialogues}) != len(dialogues):
+        raise ValueError(f"Duplicate dialogue keys in {path}")
     return dialogues
 
 
-def load_eedi_splits(
-    root: Path,
-    *,
-    seed: int = 221,
-    train_fraction: float = 0.75,
-) -> DatasetSplits:
-    """Load the published data and reproduce the official train/validation split."""
-    if not 0 < train_fraction < 1:
-        raise ValueError("train_fraction must be between zero and one")
-
-    metadata = _load_metadata(root)
-    development = _load_dialogues(root / "anchored-dialogues" / "train.csv", metadata)
-    test = _load_dialogues(root / "anchored-dialogues" / "test.csv", metadata)
-
-    random.Random(seed).shuffle(development)
-    split_at = int(len(development) * train_fraction)
-    return DatasetSplits(
-        train=development[:split_at],
-        validation=development[split_at:],
-        test=test,
+def load_eedi_splits(root: Path) -> DatasetSplits:
+    """Preserve published splits/order; never reshuffle or fall back to raw data."""
+    splits = DatasetSplits(
+        train=_load_annotated(root / "train_gpt-4.1.csv"),
+        validation=_load_annotated(root / "val_gpt-4.1.csv"),
+        test=_load_annotated(root / "test_gpt-4.1.csv"),
     )
+    keys = [
+        set(d["key"] for d in split) for split in (splits.train, splits.validation, splits.test)
+    ]
+    if any(keys[i] & keys[j] for i, j in ((0, 1), (0, 2), (1, 2))):
+        raise ValueError("Dialogue overlap across annotated splits")
+    return splits

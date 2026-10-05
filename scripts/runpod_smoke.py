@@ -17,40 +17,34 @@ from simulated_students.dataset import load_eedi_splits
 from simulated_students.formatting import ChatTemplateTokenizer
 from simulated_students.training import SFTCollator, _format_dialogues, _load_config, train_student
 
-REVISIONS = {
-    "llama_3_2_3b": "0cb88a4f764b7a12671c53f0838cd831a0843b95",
-    "llama_3_1_8b": "0e9e39f249a16976918f6564b8830bc894c89659",
-    "qwen3_4b": "cdbee75f17c01a7cc42f958dc650907174af0554",
-}
+MODEL_KEYS = ("llama_3_2_3b", "llama_3_1_8b", "qwen3_4b")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset_root", type=Path)
-    parser.add_argument("--model", choices=tuple(REVISIONS), required=True)
+    parser.add_argument("--model", choices=MODEL_KEYS, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--config", type=Path, default=Path("configs/train.yaml"))
     parser.add_argument(
         "--model-id", help="Tiny/local model override for harness verification only"
     )
     args = parser.parse_args()
-    if not torch.cuda.is_available() or not torch.cuda.is_bf16_supported():
+    if not torch.cuda.is_available() or not torch.cuda.is_bf16_supported(including_emulation=False):
         raise RuntimeError("This smoke requires a CUDA GPU with native BF16 support")
     if torch.cuda.device_count() != 1:
         raise RuntimeError("Expose exactly one GPU for the configured effective batch of 64")
-    if args.output_dir.exists():
-        raise FileExistsError(f"Choose a fresh smoke output directory: {args.output_dir}")
+    smoke_config = args.output_dir.with_name(f"{args.output_dir.name}-config.yaml")
+    if args.output_dir.exists() or smoke_config.exists():
+        raise FileExistsError(f"Choose fresh smoke output/config paths: {args.output_dir}")
 
     config = _load_config(args.config)
     selected = config["models"][args.model]
-    if selected["train_batch_size"] is None:
-        selected.update(train_batch_size=1, gradient_accumulation_steps=64)
     # One nonzero-LR optimizer update is enough for a smoke, unlike the paper's warmup.
     config["training"]["warmup_ratio"] = 0.0
     args.output_dir.mkdir(parents=True)
-    smoke_config = args.output_dir / "smoke-config.yaml"
     smoke_config.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
-    revision = None if args.model_id else REVISIONS[args.model]
+    revision = None if args.model_id else selected["revision"]
     model_id = args.model_id or selected["id"]
     start = time.monotonic()
     print(f"SMOKE ONLY: {model_id}, revision={revision}, BF16, no quantization", flush=True)
@@ -82,9 +76,7 @@ def main() -> None:
     reference = AutoTokenizer.from_pretrained(  # type: ignore[no-untyped-call]
         data["filter_tokenizer_id"], revision=data["filter_tokenizer_revision"]
     )
-    splits = load_eedi_splits(
-        args.dataset_root, seed=data["split_seed"], train_fraction=data["train_fraction"]
-    )
+    splits = load_eedi_splits(args.dataset_root)
     collator = SFTCollator(tokenizer.pad_token_id)
     optimizer = torch.optim.AdamW(
         [parameter for parameter in model.parameters() if parameter.requires_grad],

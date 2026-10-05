@@ -40,7 +40,23 @@ def _student_messages(dialogue: Dialogue) -> list[dict[str, str]]:
         raise ValueError(f"Dialogue {dialogue['key']} has no turns")
 
     turns[-1]["content"] += END_OF_DIALOGUE
-    context = f"Question:\n{dialogue['question']}\n\n"
+    question = dialogue["question"]
+    annotation = dialogue.get("question_annotation")
+    if annotation and annotation["solvable"]:
+        letters = "ABCD"
+        question += (
+            f"\nCorrect Answer: {letters[annotation['correct_option'] - 1]}"
+            f"\nSolution: {annotation['solution']}\n"
+        )
+        question += "\n".join(
+            [
+                f"Answer A Explanation: {annotation['option_1_explanation']}",
+                f"Answer B Explanation: {annotation['option_2_explanation']}",
+                f"Answer C Explanation: {annotation['option_3_explanation']}",
+                f"Answer D Explanation: {annotation['option_4_explanation']}",
+            ]
+        )
+    context = f"Question:\n{question}\n\n"
     if turns[0]["role"] == "tutor":
         context += f"First Tutor Turn: {turns[0]['content']}"
         turns = turns[1:]
