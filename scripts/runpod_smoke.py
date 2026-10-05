@@ -78,9 +78,6 @@ def main() -> None:
         model_id, revision=revision, dtype=torch.bfloat16, device_map={"": 0}
     )
     model = PeftModel.from_pretrained(base, args.output_dir, is_trainable=True)
-    if config["training"]["gradient_checkpointing"]:
-        model.gradient_checkpointing_enable()
-        model.enable_input_require_grads()
     data = config["data"]
     reference = AutoTokenizer.from_pretrained(  # type: ignore[no-untyped-call]
         data["filter_tokenizer_id"], revision=data["filter_tokenizer_revision"]
